@@ -50,26 +50,26 @@ Order Service (/orders)
 - Nhận orders từ RabbitMQ queue
 - Xử lý và lưu orders vào database
 Đăng ký tài khoản
-![alt text](screenshots\image.png)
-![alt text](screenshots\image-1.png)
+![alt text](screenshots/image.png)
+![alt text](screenshots/image-1.png)
 Đăng nhập
-![alt text](screenshots\image-2.png)
+![alt text](screenshots/image-2.png)
 
 Dashboard (Protected Route)
 <!-- Thêm ảnh screenshot dashboard ở đây -->
-![alt text](screenshots\image-3.png)
+![alt text](screenshots/image-3.png)
 
 2. Product Management
 
 Tạo sản phẩm mới
-![alt text](screenshots\image-4.png)
+![alt text](screenshots/image-4.png)
 
 Danh sách sản phẩm
-![alt text](screenshots\image-5.png)
+![alt text](screenshots/image-5.png)
 
 Mua sản phẩm
-![alt text](screenshots\image-8.png)
-![alt text](screenshots\image-7.png)
+![alt text](screenshots/image-8.png)
+![alt text](screenshots/image-7.png)
 
 ### 🎯 Tính năng chính
 
