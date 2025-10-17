@@ -5,15 +5,18 @@ Authentication Service (/auth)
 - `POST /auth/login` - Đăng nhập
 - `GET /auth/dashboard` - Dashboard (cần token)
 
-Product Service (/products)
+Product Service (/products - Port 3001)
 - `GET /products/api/products` - Lấy danh sách sản phẩm
 - `POST /products/api/products` - Tạo sản phẩm mới
-- `PUT /products/api/products/:id` - Cập nhật sản phẩm
-- `DELETE /products/api/products/:id` - Xóa sản phẩm
+- `POST /products/api/buy` - Mua sản phẩm (tạo order)
+- `GET /products/api/buy/:orderId` - Lấy trạng thái order
 
-Order Service (/orders)
-- Nhận orders từ RabbitMQ queue
-- Xử lý và lưu orders vào database
+Order Service (/orders - Port 3002) - **MỚI: Service độc lập**
+- `GET /orders/api/orders` - Lấy tất cả orders
+- `GET /orders/api/orders/:orderId` - Lấy order theo ID
+- `GET /orders/api/orders/user/:username` - Lấy orders theo user
+- `GET /orders/api/orders/stats` - Thống kê orders
+- Message consumer: Nhận orders từ RabbitMQ queue và lưu vào database
 Đăng ký tài khoản
 ![alt text](screenshots/image.png)
 ![alt text](screenshots/image-1.png)

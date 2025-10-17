@@ -2,12 +2,16 @@ const express = require("express");
 const mongoose = require("mongoose");
 const config = require("./config");
 const MessageBroker = require("./utils/messageBroker");
+const ProductsService = require("./services/productsService");
 const productsRouter = require("./routes/productRoutes");
+const buyRoutes = require("./routes/buyRoutes");
 require("dotenv").config();
 
 class App {
   constructor() {
     this.app = express();
+    this.ordersMap = new Map(); // Track pending orders - moved from BuyController
+    this.productsService = new ProductsService();
     this.connectDB();
     this.setMiddlewares();
     this.setRoutes();
@@ -33,11 +37,39 @@ class App {
   }
 
   setRoutes() {
+    // Pass ordersMap to buyRoutes so BuyController can access it
     this.app.use("/api/products", productsRouter);
+    this.app.use("/api/buy", buyRoutes(this.ordersMap));
   }
 
-  setupMessageBroker() {
-    MessageBroker.connect();
+  async setupMessageBroker() {
+    try {
+      await MessageBroker.connect();
+      
+      // Setup consumer for products queue
+      await MessageBroker.consumeProductMessages(async (data) => {
+        const orderData = JSON.parse(JSON.stringify(data));
+        const { orderId, orderItems } = orderData;
+        console.log("Looking for order:", orderId);
+        const order = this.ordersMap.get(orderId);
+        if (order) {
+          // Decrease inventory for each product
+          console.log("Decreasing inventory for order items...");
+          for (const item of orderItems) {
+            await this.productsService.decreaseInventory(item.productId, item.quantity);
+            console.log(`Decreased inventory for ${item.productName}: -${item.quantity}`);
+          }
+          
+          // Update the order in the map
+          this.ordersMap.set(orderId, { ...order, ...orderData, status: 'completed' });
+          console.log("Order completed:", orderId);
+        } else {
+          console.log("Order not found in map:", orderId);
+        }
+      });
+    } catch (error) {
+      console.error("Failed to setup message broker:", error);
+    }
   }
 
   start() {

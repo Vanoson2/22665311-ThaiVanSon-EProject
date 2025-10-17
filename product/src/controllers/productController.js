@@ -1,6 +1,4 @@
-const Product = require("../models/product");
-const messageBroker = require("../utils/messageBroker");
-const uuid = require('uuid');
+const ProductsService = require("../services/productsService");
 
 /**
  * Class to hold the API implementation for the product services
@@ -8,10 +6,9 @@ const uuid = require('uuid');
 class ProductController {
 
   constructor() {
-    this.createOrder = this.createOrder.bind(this);
-    this.getOrderStatus = this.getOrderStatus.bind(this);
-    this.ordersMap = new Map();
-
+    this.productsService = new ProductsService();
+    this.createProduct = this.createProduct.bind(this);
+    this.getProducts = this.getProducts.bind(this);
   }
 
   async createProduct(req, res, next) {
@@ -20,14 +17,15 @@ class ProductController {
       if (!token) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const product = new Product(req.body);
 
-      const validationError = product.validateSync();
-      if (validationError) {
-        return res.status(400).json({ message: validationError.message });
+      // Validate required fields
+      const { name, price, inventory } = req.body;
+      if (!name || !price || inventory === undefined) {
+        return res.status(400).json({ message: "Name, price, and inventory are required" });
       }
 
-      await product.save({ timeout: 30000 });
+      // Use ProductsService to create or update product
+      const product = await this.productsService.createProduct(req.body);
 
       res.status(201).json(product);
     } catch (error) {
@@ -36,75 +34,15 @@ class ProductController {
     }
   }
 
-  async createOrder(req, res, next) {
-    try {
-      const token = req.headers.authorization;
-      if (!token) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-  
-      const { ids } = req.body;
-      const products = await Product.find({ _id: { $in: ids } });
-  
-      const orderId = uuid.v4(); // Generate a unique order ID
-      console.log("User from token:", req.user); // Debug log
-      console.log("Username:", req.user.username); // Debug log
-      
-      this.ordersMap.set(orderId, { 
-        status: "pending", 
-        products, 
-        username: req.user.username
-      });
-  
-      await messageBroker.publishMessage("orders", {
-        products,
-        username: req.user.username,
-        orderId, // include the order ID in the message to orders queue
-      });
-
-      messageBroker.consumeMessage("products", (data) => {
-        const orderData = JSON.parse(JSON.stringify(data));
-        const { orderId } = orderData;
-        const order = this.ordersMap.get(orderId);
-        if (order) {
-          // update the order in the map
-          this.ordersMap.set(orderId, { ...order, ...orderData, status: 'completed' });
-          console.log("Updated order:", order);
-        }
-      });
-  
-      // Long polling until order is completed
-      let order = this.ordersMap.get(orderId);
-      while (order.status !== 'completed') {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // wait for 1 second before checking status again
-        order = this.ordersMap.get(orderId);
-      }
-  
-      // Once the order is marked as completed, return the complete order details
-      return res.status(201).json(order);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-  
-
-  async getOrderStatus(req, res, next) {
-    const { orderId } = req.params;
-    const order = this.ordersMap.get(orderId);
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-    return res.status(200).json(order);
-  }
-
   async getProducts(req, res, next) {
     try {
       const token = req.headers.authorization;
       if (!token) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const products = await Product.find({});
+
+      // Use ProductsService to get products (with inventory > 0 filter)
+      const products = await this.productsService.getProducts();
 
       res.status(200).json(products);
     } catch (error) {

@@ -1,14 +1,27 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const Order = require("./models/order");
-const amqp = require("amqplib");
 const config = require("./config");
+const OrderService = require("./services/orderService");
+const orderRoutes = require("./routes/orderRoutes");
+const messageBroker = require("./utils/messageBroker");
 
 class App {
   constructor() {
     this.app = express();
+    this.orderService = new OrderService();
     this.connectDB();
+    this.setMiddlewares();
+    this.setRoutes();
     this.setupOrderConsumer();
+  }
+
+  setMiddlewares() {
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: false }));
+  }
+
+  setRoutes() {
+    this.app.use("/api/orders", orderRoutes);
   }
 
   async connectDB() {
@@ -25,62 +38,36 @@ class App {
   }
 
   async setupOrderConsumer() {
-    console.log("Connecting to RabbitMQ...");
-  
-    setTimeout(async () => {
-      try {
-        const amqpServer = "amqp://localhost:5672";
-        const connection = await amqp.connect(amqpServer);
-        console.log("Connected to RabbitMQ");
-        const channel = await connection.createChannel();
-        await channel.assertQueue("orders");
-  
-        channel.consume("orders", async (data) => {
-          // Consume messages from the order queue on buy
-          console.log("Consuming ORDER service");
-          const messageData = JSON.parse(data.content);
-          console.log("Received message:", messageData); // Debug log
-          console.log("Products array:", messageData.products); // Debug products
-          const { products, username, orderId } = messageData;
-          console.log("Username from message:", username); // Debug log
-          
-          // Debug: Check if products have price property
-          if (products && products.length > 0) {
-            console.log("First product:", products[0]);
-            console.log("Product prices:", products.map(p => p.price));
-          }
-  
-          const calculatedTotal = products.reduce((acc, product) => {
-            console.log(`Adding product price: ${product.price}, current total: ${acc}`);
-            return acc + (product.price || 0);
-          }, 0);
-          console.log("Calculated total price:", calculatedTotal);
-  
-          const newOrder = new Order({
-            products,
-            user: username,
-            totalPrice: calculatedTotal
-          });
-  
-          // Save order to DB
-          await newOrder.save();
-  
-          // Send ACK to ORDER service
-          channel.ack(data);
-          console.log("Order saved to DB and ACK sent to ORDER queue");
-  
-          // Send fulfilled order to PRODUCTS service
-          // Include orderId in the message
-          const { user, products: savedProducts, totalPrice } = newOrder.toJSON();
-          channel.sendToQueue(
-            "products",
-            Buffer.from(JSON.stringify({ orderId, user, products: savedProducts, totalPrice }))
-          );
-        });
-      } catch (err) {
-        console.error("Failed to connect to RabbitMQ:", err.message);
-      }
-    }, 10000); // add a delay to wait for RabbitMQ to start in docker-compose
+    try {
+      // Connect to RabbitMQ
+      await messageBroker.connect();
+      
+      // Set up consumer for orders queue using new interface
+      await messageBroker.consumeOrderMessages(async (messageData) => {
+        console.log("Processing order from queue:", messageData);
+        
+        const { orderItems, username, orderId, totalPrice } = messageData;
+
+        // Use OrderService to create order
+        const newOrder = await this.orderService.createOrder(orderItems, username, totalPrice);
+        console.log("Order saved to database:", newOrder._id);
+
+        // Send response back to PRODUCTS service
+        const responseMessage = { 
+          orderId, 
+          user: newOrder.user, 
+          orderItems: newOrder.orderItems, 
+          totalPrice: newOrder.totalPrice,
+          _id: newOrder._id
+        };
+        
+        console.log("Sending response to products queue:", responseMessage);
+        await messageBroker.publishMessage(config.queueNameProduct, responseMessage);
+        console.log("Response sent successfully");
+      });
+    } catch (error) {
+      console.error("Failed to setup order consumer:", error.message);
+    }
   }
 
 
